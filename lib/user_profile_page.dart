@@ -176,8 +176,143 @@ class UserProfilePage extends StatelessWidget {
             backgroundColor: Colors.white,
           ),
         ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () => _showSignOutConfirmation(context),
+          icon: const Icon(Icons.logout),
+          label: const Text('Cerrar sesión'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _profileGreen,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            side: const BorderSide(color: Color(0xFFDCE7E1)),
+            backgroundColor: Colors.white,
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _showSignOutConfirmation(BuildContext context) async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F1ED),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.logout, color: _profileGreen),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'CUENTA · ${role.toUpperCase()}',
+                style: const TextStyle(
+                  color: _profileGreen,
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '¿Cerrar sesión?',
+                style: TextStyle(
+                  color: _profileInk,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Volverás a la pantalla de inicio de sesión. Para continuar, necesitarás ingresar nuevamente.',
+                style: TextStyle(color: _profileMuted, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF2F7F4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFDCE7E1)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tu trabajo, siempre trazable',
+                      style: TextStyle(
+                        color: _profileInk,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      'Cerrar sesión no elimina movimientos ni componentes del historial. Revisa cualquier borrador antes de salir.',
+                      style: TextStyle(color: _profileMuted, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.of(sheetContext).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _profileGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text(
+                  'Sí, cerrar sesión',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => Navigator.of(sheetContext).pop(false),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _profileGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  side: const BorderSide(color: Color(0xFFDCE7E1)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text(
+                  'Seguir en mi cuenta',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      await onSignOut();
+    }
   }
 
   void _showGuide(BuildContext context) {
