@@ -159,6 +159,11 @@ class InventoryService {
       final compactBytes = resized == null
           ? imageBytes
           : img.encodeJpg(resized, quality: 72);
+      if (compactBytes.length > 500000) {
+        throw StateError(
+          'La foto sigue siendo demasiado pesada. Elige una imagen más pequeña.',
+        );
+      }
       resolvedImageBase64 = base64Encode(compactBytes);
 
       try {
@@ -188,7 +193,7 @@ class InventoryService {
       'updatedBy': user.uid,
       if (resolvedImageUrl != null)
         'imageUrl': resolvedImageUrl
-      else if (removeImage)
+      else if (removeImage || imageBytes != null)
         'imageUrl': FieldValue.delete(),
       if (resolvedImageBase64 != null)
         'imageBase64': resolvedImageBase64

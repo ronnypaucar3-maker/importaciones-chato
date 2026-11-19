@@ -290,6 +290,23 @@ service cloud.firestore {
     match /products/{productId} {
       allow get, list: if activeUser();
 
+      function validProductImageFields(data) {
+        return (
+          !data.keys().hasAny(['imageUrl'])
+          || (
+            data.imageUrl is string
+            && data.imageUrl.size() <= 2048
+          )
+        )
+        && (
+          !data.keys().hasAny(['imageBase64'])
+          || (
+            data.imageBase64 is string
+            && data.imageBase64.size() <= 700000
+          )
+        );
+      }
+
       allow create: if managementRole()
         && request.resource.data.keys().hasOnly([
           'sku',
@@ -304,8 +321,11 @@ service cloud.firestore {
           'createdBy',
           'updatedAt',
           'updatedBy',
-          'lastMovementId'
+          'lastMovementId',
+          'imageUrl',
+          'imageBase64'
         ])
+        && validProductImageFields(request.resource.data)
         && request.resource.data.sku is string
         && request.resource.data.sku.size() > 0
         && request.resource.data.name is string
@@ -347,8 +367,11 @@ service cloud.firestore {
             'minStock',
             'active',
             'updatedAt',
-            'updatedBy'
+            'updatedBy',
+            'imageUrl',
+            'imageBase64'
           ])
+        && validProductImageFields(request.resource.data)
         && (
           !request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['description'])
