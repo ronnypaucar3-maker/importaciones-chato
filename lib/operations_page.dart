@@ -15,6 +15,7 @@ import 'models/cash_payment.dart';
 import 'models/cash_shift.dart';
 import 'models/product.dart';
 import 'notifications_page.dart';
+import 'sale_receipt_page.dart';
 import 'services/cash_shift_service.dart';
 import 'services/inventory_service.dart';
 import 'services/notification_service.dart';
@@ -501,11 +502,16 @@ class _OperationsPageState extends State<OperationsPage> {
         inventory: _inventory,
         cashShifts: _cashShifts,
         onOpenHome: () => _select(_Section.overview),
+        onOpenHistory: () => _select(_Section.history),
       ),
-      _Section.sales => _SalesPage(inventory: _inventory),
+      _Section.sales => _SalesPage(
+        inventory: _inventory,
+        onOpenHistory: () => _select(_Section.history),
+      ),
       _Section.reports => _ReportsPage(inventory: _inventory),
       _Section.history when widget.role == 'Caja' => CashierSalesHistoryPage(
         inventory: _inventory,
+        onOpenSales: () => _select(_Section.sales),
       ),
       _Section.history => _HistoryPage(inventory: _inventory),
       _Section.profile => UserProfilePage(
@@ -2935,11 +2941,13 @@ class _CashierSalesGate extends StatelessWidget {
     required this.inventory,
     required this.cashShifts,
     required this.onOpenHome,
+    required this.onOpenHistory,
   });
 
   final InventoryService inventory;
   final CashShiftService cashShifts;
   final VoidCallback onOpenHome;
+  final VoidCallback onOpenHistory;
 
   @override
   Widget build(BuildContext context) {
@@ -3003,16 +3011,25 @@ class _CashierSalesGate extends StatelessWidget {
             ],
           );
         }
-        return _SalesPage(inventory: inventory, cashShiftId: shift.id);
+        return _SalesPage(
+          inventory: inventory,
+          cashShiftId: shift.id,
+          onOpenHistory: onOpenHistory,
+        );
       },
     );
   }
 }
 
 class _SalesPage extends StatefulWidget {
-  const _SalesPage({required this.inventory, this.cashShiftId});
+  const _SalesPage({
+    required this.inventory,
+    required this.onOpenHistory,
+    this.cashShiftId,
+  });
 
   final InventoryService inventory;
+  final VoidCallback onOpenHistory;
   final String? cashShiftId;
 
   @override
@@ -3356,34 +3373,30 @@ class _SalesPageState extends State<_SalesPage> {
         _cart.clear();
         _amountReceived.clear();
       });
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          icon: const Icon(Icons.check_circle_outline, color: _green, size: 36),
-          title: const Text('Venta registrada'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Comprobante #${receipt.id.substring(0, 8).toUpperCase()}'),
-              const SizedBox(height: 12),
-              _receiptAmountRow('Total', receipt.total),
-              if (_paymentMethod == 'Efectivo') ...[
-                _receiptAmountRow('Recibido', receipt.amountReceived),
-                _receiptAmountRow('Vuelto', receipt.changeDue),
-              ],
-              const SizedBox(height: 8),
-              Text('Pago: $_paymentMethod'),
-            ],
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Nueva venta'),
-            ),
-          ],
-        ),
+      final receiptItems = [
+        for (final line in lines)
+          {
+            'sku': byId[line.key]!.sku,
+            'name': byId[line.key]!.name,
+            'quantity': line.value,
+            'unitPrice': byId[line.key]!.price,
+            'subtotal': byId[line.key]!.price * line.value,
+          },
+      ];
+      final action = await showSaleReceipt(
+        context,
+        saleId: receipt.id,
+        items: receiptItems,
+        total: receipt.total,
+        paymentMethod: _paymentMethod,
+        amountReceived: receipt.amountReceived,
+        changeDue: receipt.changeDue,
+        sellerName: widget.inventory.displayName,
+        occurredAt: DateTime.now(),
       );
+      if (mounted && action == SaleReceiptAction.history) {
+        widget.onOpenHistory();
+      }
     } on FirebaseException catch (error) {
       if (mounted) setState(() => _error = _firebaseMessage(error));
     } on StateError catch (error) {
@@ -3391,21 +3404,6 @@ class _SalesPageState extends State<_SalesPage> {
     } finally {
       if (mounted) setState(() => _working = false);
     }
-  }
-
-  Widget _receiptAmountRow(String label, double amount) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 5),
-      child: Row(
-        children: [
-          Expanded(child: Text(label)),
-          Text(
-            _money(amount),
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import 'models/cash_shift.dart';
 import 'models/product.dart';
+import 'sale_receipt_page.dart';
 import 'services/cash_shift_service.dart';
 import 'services/inventory_service.dart';
 
@@ -473,9 +474,14 @@ class _CashierHomePageState extends State<CashierHomePage> {
 }
 
 class CashierSalesHistoryPage extends StatelessWidget {
-  const CashierSalesHistoryPage({required this.inventory, super.key});
+  const CashierSalesHistoryPage({
+    required this.inventory,
+    required this.onOpenSales,
+    super.key,
+  });
 
   final InventoryService inventory;
+  final VoidCallback onOpenSales;
 
   @override
   Widget build(BuildContext context) {
@@ -524,57 +530,24 @@ class CashierSalesHistoryPage extends StatelessWidget {
   Future<void> _showSaleDetails(
     BuildContext context,
     QueryDocumentSnapshot<Map<String, dynamic>> sale,
-  ) {
+  ) async {
     final data = sale.data();
     final rawItems = data['items'];
     final items = rawItems is List
         ? rawItems.whereType<Map<String, dynamic>>().toList()
         : <Map<String, dynamic>>[];
-    return showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Comprobante #${_shortId(sale.id)}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final item in items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 9),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${item['quantity'] ?? 0} × ${item['name'] ?? 'Producto'}',
-                        ),
-                      ),
-                      Text(_cashierMoney(_numeric(item['subtotal']))),
-                    ],
-                  ),
-                ),
-              const Divider(),
-              _DetailAmountRow(
-                label: 'Total',
-                amount: _numeric(data['total']),
-                emphasized: true,
-              ),
-              const SizedBox(height: 7),
-              Text('Pago: ${data['paymentMethod'] ?? 'No especificado'}'),
-              const SizedBox(height: 5),
-              Text('Fecha: ${_dateTime(_timestamp(data['occurredAt']))}'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cerrar'),
-          ),
-        ],
-      ),
+    final action = await showSaleReceipt(
+      context,
+      saleId: sale.id,
+      items: items,
+      total: _numeric(data['total']),
+      paymentMethod: data['paymentMethod'] as String? ?? 'No especificado',
+      amountReceived: _numeric(data['amountReceived'] ?? data['total']),
+      changeDue: _numeric(data['changeDue']),
+      sellerName: data['createdByName'] as String? ?? '',
+      occurredAt: _timestamp(data['occurredAt']),
     );
+    if (action == SaleReceiptAction.newSale) onOpenSales();
   }
 }
 
