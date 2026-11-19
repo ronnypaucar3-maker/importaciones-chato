@@ -4178,6 +4178,9 @@ DateTime _timestamp(Object? value) => value is Timestamp
 String _firebaseMessage(FirebaseException error) {
   return switch (error.code) {
     'permission-denied' => 'La operación no está permitida. Verifica las reglas publicadas de Firestore.',
+    'object-not-found' => 'No se encontró el almacenamiento de Firebase. Habilita Firebase Storage para este proyecto.',
+    'unauthenticated' =>
+      'Tu sesión venció. Inicia sesión nuevamente antes de subir archivos.',
     'unavailable' =>
       'No se pudo conectar con Firebase. Revisa internet e inténtalo otra vez.',
     'already-exists' => 'Ya existe un registro con esos datos.',

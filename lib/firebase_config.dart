@@ -14,6 +14,10 @@ class FirebaseConfig {
   );
   static const webAppId = String.fromEnvironment('FIREBASE_WEB_APP_ID');
   static const androidAppId = String.fromEnvironment('FIREBASE_ANDROID_APP_ID');
+  static const storageBucket = String.fromEnvironment(
+    'FIREBASE_STORAGE_BUCKET',
+    defaultValue: 'importaciones-chato.firebasestorage.app',
+  );
 
   static bool get _hasExplicitOptions {
     final appId = kIsWeb ? webAppId : androidAppId;
@@ -49,6 +53,7 @@ class FirebaseConfig {
       appId: kIsWeb ? webAppId : androidAppId,
       messagingSenderId: messagingSenderId,
       projectId: projectId,
+      storageBucket: storageBucket,
       authDomain: kIsWeb ? '$projectId.firebaseapp.com' : null,
     );
   }

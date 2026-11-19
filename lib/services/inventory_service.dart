@@ -17,6 +17,7 @@ class InventoryService {
   final User user;
   final String displayName;
   final FirebaseFirestore _firestore;
+  static const _storageBucket = 'gs://importaciones-chato.firebasestorage.app';
 
   CollectionReference<Map<String, dynamic>> get _products =>
       _firestore.collection('products');
@@ -146,9 +147,8 @@ class InventoryService {
           ? imageFileName.split('.').last.toLowerCase()
           : 'jpg';
       final safeExtension = extension.length <= 5 ? extension : 'jpg';
-      final imageRef = FirebaseStorage.instance.ref(
-        'product_images/${productRef.id}.$safeExtension',
-      );
+      final imageRef = FirebaseStorage.instanceFor(bucket: _storageBucket)
+          .ref('product_images/${productRef.id}.$safeExtension');
       await imageRef.putData(
         imageBytes,
         SettableMetadata(contentType: 'image/$safeExtension'),
