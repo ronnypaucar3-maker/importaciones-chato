@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -2183,12 +2184,25 @@ class _ProductTile extends StatelessWidget {
             ? Image.network(
                 product.imageUrl!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => Icon(
-                  product.isLowStock
-                      ? Icons.warning_amber_outlined
-                      : Icons.inventory_2_outlined,
-                  color: product.isLowStock ? const Color(0xFF88620B) : _green,
-                ),
+                errorBuilder: (_, _, _) =>
+                    product.imageBase64?.isNotEmpty == true
+                    ? Image.memory(
+                        base64Decode(product.imageBase64!),
+                        fit: BoxFit.cover,
+                      )
+                    : Icon(
+                        product.isLowStock
+                            ? Icons.warning_amber_outlined
+                            : Icons.inventory_2_outlined,
+                        color: product.isLowStock
+                            ? const Color(0xFF88620B)
+                            : _green,
+                      ),
+              )
+            : product.imageBase64?.isNotEmpty == true
+            ? Image.memory(
+                base64Decode(product.imageBase64!),
+                fit: BoxFit.cover,
               )
             : Icon(
                 product.isLowStock
@@ -2437,6 +2451,18 @@ class _ProductDialogState extends State<_ProductDialog> {
                                   widget.product?.imageUrl?.isNotEmpty == true
                             ? Image.network(
                                 widget.product!.imageUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 38,
+                                  color: _green,
+                                ),
+                              )
+                            : !_removeSelectedImage &&
+                                  widget.product?.imageBase64?.isNotEmpty ==
+                                      true
+                            ? Image.memory(
+                                base64Decode(widget.product!.imageBase64!),
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => const Icon(
                                   Icons.inventory_2_outlined,

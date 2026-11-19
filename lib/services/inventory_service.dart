@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image/image.dart' as img;
 
+import 'dart:convert';
 import 'dart:typed_data';
 
 import '../models/cash_payment.dart';
@@ -142,18 +144,38 @@ class InventoryService {
   }) async {
     final productRef = id == null ? _products.doc() : _products.doc(id);
     var resolvedImageUrl = imageUrl;
+    String? resolvedImageBase64;
     if (imageBytes != null) {
-      final extension = imageFileName.contains('.')
-          ? imageFileName.split('.').last.toLowerCase()
-          : 'jpg';
-      final safeExtension = extension.length <= 5 ? extension : 'jpg';
-      final imageRef = FirebaseStorage.instanceFor(bucket: _storageBucket)
-          .ref('product_images/${productRef.id}.$safeExtension');
-      await imageRef.putData(
-        imageBytes,
-        SettableMetadata(contentType: 'image/$safeExtension'),
-      );
-      resolvedImageUrl = await imageRef.getDownloadURL();
+      final decoded = img.decodeImage(imageBytes);
+      final resized = decoded == null
+          ? null
+          : img.copyResize(
+              decoded,
+              width: decoded.width > 512 ? 512 : decoded.width,
+              height: decoded.height > 512 ? 512 : decoded.height,
+              maintainAspect: true,
+              interpolation: img.Interpolation.average,
+            );
+      final compactBytes = resized == null
+          ? imageBytes
+          : img.encodeJpg(resized, quality: 72);
+      resolvedImageBase64 = base64Encode(compactBytes);
+
+      try {
+        final extension = imageFileName.contains('.')
+            ? imageFileName.split('.').last.toLowerCase()
+            : 'jpg';
+        final safeExtension = extension.length <= 5 ? extension : 'jpg';
+        final imageRef = FirebaseStorage.instanceFor(bucket: _storageBucket)
+            .ref('product_images/${productRef.id}.$safeExtension');
+        await imageRef.putData(
+          imageBytes,
+          SettableMetadata(contentType: 'image/$safeExtension'),
+        );
+        resolvedImageUrl = await imageRef.getDownloadURL();
+      } on FirebaseException {
+        resolvedImageUrl = null;
+      }
     }
     final data = {
       'sku': sku.trim(),
@@ -168,6 +190,10 @@ class InventoryService {
         'imageUrl': resolvedImageUrl
       else if (removeImage)
         'imageUrl': FieldValue.delete(),
+      if (resolvedImageBase64 != null)
+        'imageBase64': resolvedImageBase64
+      else if (removeImage)
+        'imageBase64': FieldValue.delete(),
     };
 
     if (id != null) {
