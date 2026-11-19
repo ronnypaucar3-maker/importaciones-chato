@@ -609,7 +609,7 @@ class _OperationsDrawer extends StatelessWidget {
             title: const Text('Notificaciones'),
             onTap: onOpenNotifications,
           ),
-        if (onManageUsers != null || onSignOut != null)
+        if (onManageUsers != null)
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: Divider(),
@@ -619,12 +619,6 @@ class _OperationsDrawer extends StatelessWidget {
             leading: const Icon(Icons.people_outline),
             title: const Text('Usuarios y permisos'),
             onTap: onManageUsers,
-          ),
-        if (onSignOut != null)
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Cerrar sesión'),
-            onTap: onSignOut,
           ),
       ],
     );
@@ -723,18 +717,6 @@ class _OperationsSideNav extends StatelessWidget {
                           fontSize: 11,
                         ),
                       ),
-                    ),
-                    ListTile(
-                      dense: true,
-                      leading: const Icon(
-                        Icons.logout,
-                        color: Color(0xFFD0E4DC),
-                      ),
-                      title: const Text(
-                        'Cerrar sesión',
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                      onTap: onSignOut,
                     ),
                   ],
                 ),

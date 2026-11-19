@@ -1716,15 +1716,6 @@ class _AdminSideNav extends StatelessWidget {
               style: TextStyle(color: Color(0xFFB8D3C9), fontSize: 11),
             ),
           ),
-          ListTile(
-            dense: true,
-            leading: const Icon(Icons.logout, color: Color(0xFFD0E4DC)),
-            title: const Text(
-              'Cerrar sesión',
-              style: TextStyle(color: Colors.white, fontSize: 12),
-            ),
-            onTap: () => onSignOut(),
-          ),
         ],
       ),
     );
@@ -1801,11 +1792,6 @@ class _AdminDrawer extends StatelessWidget {
           icon: Icon(Icons.people_outline),
           selectedIcon: Icon(Icons.people),
           label: Text('Usuarios y permisos'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('Cerrar sesión'),
-          onTap: () => onSignOut(),
         ),
       ],
     );

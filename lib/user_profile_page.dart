@@ -176,18 +176,6 @@ class UserProfilePage extends StatelessWidget {
             backgroundColor: Colors.white,
           ),
         ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: onSignOut,
-          icon: const Icon(Icons.logout),
-          label: const Text('Cerrar sesión'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _profileGreen,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            side: const BorderSide(color: Color(0xFFDCE7E1)),
-            backgroundColor: Colors.white,
-          ),
-        ),
       ],
     );
   }
