@@ -1,5 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
+import 'dart:typed_data';
 
 import '../models/cash_payment.dart';
 import '../models/product.dart';
@@ -131,8 +134,27 @@ class InventoryService {
     required double price,
     required int minStock,
     required int initialStock,
+    String? imageUrl,
+    Uint8List? imageBytes,
+    String imageFileName = 'producto.jpg',
+    bool removeImage = false,
   }) async {
     final productRef = id == null ? _products.doc() : _products.doc(id);
+    var resolvedImageUrl = imageUrl;
+    if (imageBytes != null) {
+      final extension = imageFileName.contains('.')
+          ? imageFileName.split('.').last.toLowerCase()
+          : 'jpg';
+      final safeExtension = extension.length <= 5 ? extension : 'jpg';
+      final imageRef = FirebaseStorage.instance.ref(
+        'product_images/${productRef.id}.$safeExtension',
+      );
+      await imageRef.putData(
+        imageBytes,
+        SettableMetadata(contentType: 'image/$safeExtension'),
+      );
+      resolvedImageUrl = await imageRef.getDownloadURL();
+    }
     final data = {
       'sku': sku.trim(),
       'name': name.trim(),
@@ -142,6 +164,10 @@ class InventoryService {
       'minStock': minStock,
       'updatedAt': FieldValue.serverTimestamp(),
       'updatedBy': user.uid,
+      if (resolvedImageUrl != null)
+        'imageUrl': resolvedImageUrl
+      else if (removeImage)
+        'imageUrl': FieldValue.delete(),
     };
 
     if (id != null) {

@@ -11,6 +11,7 @@ class Product {
     required this.stock,
     required this.minStock,
     required this.active,
+    this.imageUrl,
   });
 
   final String id;
@@ -22,6 +23,7 @@ class Product {
   final int stock;
   final int minStock;
   final bool active;
+  final String? imageUrl;
 
   factory Product.fromSnapshot(
     QueryDocumentSnapshot<Map<String, dynamic>> snapshot,
@@ -37,6 +39,7 @@ class Product {
       stock: _asInt(data['stock']),
       minStock: _asInt(data['minStock']),
       active: data['active'] == true,
+      imageUrl: data['imageUrl'] as String?,
     );
   }
 

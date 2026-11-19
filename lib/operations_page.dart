@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'dart:math' as math;
 
@@ -2123,6 +2124,10 @@ class _ProductsPageState extends State<_ProductsPage> {
         price: input.price,
         minStock: input.minStock,
         initialStock: input.initialStock,
+        imageUrl: input.removeImage ? null : product?.imageUrl,
+        imageBytes: input.imageBytes,
+        imageFileName: input.imageFileName,
+        removeImage: input.removeImage,
       );
       if (mounted) _showMessage('Producto guardado.');
     } on FirebaseException catch (error) {
@@ -2166,14 +2171,31 @@ class _ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: const Color(0xFFE5F4ED),
-        child: Icon(
-          product.isLowStock
-              ? Icons.warning_amber_outlined
-              : Icons.inventory_2_outlined,
-          color: product.isLowStock ? const Color(0xFF88620B) : _green,
+      leading: Container(
+        width: 48,
+        height: 48,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE5F4ED),
+          borderRadius: BorderRadius.circular(12),
         ),
+        child: product.imageUrl?.isNotEmpty == true
+            ? Image.network(
+                product.imageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Icon(
+                  product.isLowStock
+                      ? Icons.warning_amber_outlined
+                      : Icons.inventory_2_outlined,
+                  color: product.isLowStock ? const Color(0xFF88620B) : _green,
+                ),
+              )
+            : Icon(
+                product.isLowStock
+                    ? Icons.warning_amber_outlined
+                    : Icons.inventory_2_outlined,
+                color: product.isLowStock ? const Color(0xFF88620B) : _green,
+              ),
       ),
       title: Text(product.name),
       subtitle: Text(
@@ -2232,6 +2254,11 @@ class _ProductDialog extends StatefulWidget {
 
 class _ProductDialogState extends State<_ProductDialog> {
   final _formKey = GlobalKey<FormState>();
+  final _imagePicker = ImagePicker();
+  Uint8List? _selectedImageBytes;
+  String _selectedImageName = 'producto.jpg';
+  bool _selectingImage = false;
+  bool _removeSelectedImage = false;
   late final _sku = TextEditingController(text: widget.product?.sku ?? '');
   late final _name = TextEditingController(text: widget.product?.name ?? '');
   late final _description = TextEditingController(
@@ -2265,6 +2292,29 @@ class _ProductDialogState extends State<_ProductDialog> {
 
   void _onNumericFieldFocusChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    if (_selectingImage) return;
+    setState(() => _selectingImage = true);
+    try {
+      final file = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1200,
+        maxHeight: 1200,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _selectedImageBytes = bytes;
+        _selectedImageName = file.name;
+        _removeSelectedImage = false;
+      });
+    } finally {
+      if (mounted) setState(() => _selectingImage = false);
+    }
   }
 
   @override
@@ -2325,6 +2375,9 @@ class _ProductDialogState extends State<_ProductDialog> {
         initialStock: widget.product == null
             ? int.tryParse(_initialStock.text.trim()) ?? 0
             : 0,
+        imageBytes: _selectedImageBytes,
+        imageFileName: _selectedImageName,
+        removeImage: _removeSelectedImage,
       ),
     );
   }
@@ -2348,6 +2401,91 @@ class _ProductDialogState extends State<_ProductDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Foto del producto',
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(color: _ink, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7FAF8),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFDCE7E1)),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 112,
+                        height: 112,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE5F4ED),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: _selectedImageBytes != null
+                            ? Image.memory(
+                                _selectedImageBytes!,
+                                fit: BoxFit.cover,
+                              )
+                            : !_removeSelectedImage &&
+                                  widget.product?.imageUrl?.isNotEmpty == true
+                            ? Image.network(
+                                widget.product!.imageUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 38,
+                                  color: _green,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.inventory_2_outlined,
+                                size: 38,
+                                color: _green,
+                              ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: _selectingImage
+                                ? null
+                                : () => _pickImage(ImageSource.camera),
+                            icon: const Icon(Icons.photo_camera_outlined),
+                            label: const Text('Tomar foto'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _selectingImage
+                                ? null
+                                : () => _pickImage(ImageSource.gallery),
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: const Text('Subir foto'),
+                          ),
+                          if (_selectedImageBytes != null ||
+                              widget.product?.imageUrl?.isNotEmpty == true)
+                            IconButton(
+                              tooltip: 'Quitar foto',
+                              onPressed: () => setState(() {
+                                _selectedImageBytes = null;
+                                _removeSelectedImage = true;
+                              }),
+                              icon: const Icon(Icons.delete_outline),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 TextFormField(
                   controller: _sku,
                   keyboardType: TextInputType.number,
@@ -2509,6 +2647,9 @@ class _ProductInput {
     required this.price,
     required this.minStock,
     required this.initialStock,
+    this.imageBytes,
+    this.imageFileName = 'producto.jpg',
+    this.removeImage = false,
   });
 
   final String sku;
@@ -2519,6 +2660,9 @@ class _ProductInput {
   final double price;
   final int minStock;
   final int initialStock;
+  final Uint8List? imageBytes;
+  final String imageFileName;
+  final bool removeImage;
 }
 
 class _InventoryPage extends StatefulWidget {
