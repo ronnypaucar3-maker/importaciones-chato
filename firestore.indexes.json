@@ -1,0 +1,65 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "stockMovements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "actorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "occurredAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "createdBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "occurredAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "createdBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "shiftId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "occurredAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "cashShiftHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cashierUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "closedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -1,0 +1,657 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profilePath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function activeUser() {
+      return signedIn()
+        && exists(profilePath())
+        && get(profilePath()).data.active == true;
+    }
+
+    function hasRole(role) {
+      return activeUser() && get(profilePath()).data.role == role;
+    }
+
+    function managementRole() {
+      return hasRole('Administrador') || hasRole('Gerente');
+    }
+
+    function productPath(productId) {
+      return /databases/$(database)/documents/products/$(productId);
+    }
+
+    function movementPath(movementId) {
+      return /databases/$(database)/documents/stockMovements/$(movementId);
+    }
+
+    function cashShiftPath(cashierUid) {
+      return /databases/$(database)/documents/cashShifts/$(cashierUid);
+    }
+
+    function validInitialMovement(productId, movementId) {
+      return movementId is string
+        && existsAfter(movementPath(movementId))
+        && getAfter(movementPath(movementId)).data.productId == productId
+        && getAfter(movementPath(movementId)).data.type == 'entry'
+        && getAfter(movementPath(movementId)).data.beforeStock == 0
+        && getAfter(movementPath(movementId)).data.afterStock
+          == request.resource.data.stock
+        && getAfter(movementPath(movementId)).data.actorUid == request.auth.uid
+        && getAfter(movementPath(movementId)).data.occurredAt == request.time;
+    }
+
+    function validStockUpdate(productId, allowedTypes) {
+      let movementId = request.resource.data.lastMovementId;
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['stock', 'lastMovementId', 'updatedAt', 'updatedBy'])
+        && request.resource.data.stock is int
+        && request.resource.data.stock >= 0
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid
+        && movementId is string
+        && existsAfter(movementPath(movementId))
+        && getAfter(movementPath(movementId)).data.productId == productId
+        && getAfter(movementPath(movementId)).data.beforeStock
+          == resource.data.stock
+        && getAfter(movementPath(movementId)).data.afterStock
+          == request.resource.data.stock
+        && getAfter(movementPath(movementId)).data.actorUid == request.auth.uid
+        && getAfter(movementPath(movementId)).data.occurredAt == request.time
+        && getAfter(movementPath(movementId)).data.type in allowedTypes;
+    }
+
+    function validMovementCreate(productId, movementId) {
+      let existingProduct = exists(productPath(productId));
+      let productAfter = getAfter(productPath(productId)).data;
+      return request.resource.data.keys().hasOnly([
+          'productId',
+          'sku',
+          'productName',
+          'type',
+          'quantity',
+          'beforeStock',
+          'afterStock',
+          'reason',
+          'saleId',
+          'purchaseId',
+          'actorUid',
+          'actorName',
+          'occurredAt'
+        ])
+        && request.resource.data.productId == productId
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity >= 0
+        && request.resource.data.beforeStock is int
+        && request.resource.data.afterStock is int
+        && request.resource.data.afterStock >= 0
+        && request.resource.data.type
+          in ['entry', 'exit', 'adjustment', 'purchase', 'sale']
+        && (
+          (
+            request.resource.data.type in ['entry', 'purchase']
+            && request.resource.data.quantity > 0
+            && request.resource.data.afterStock
+              == request.resource.data.beforeStock
+                + request.resource.data.quantity
+          )
+          || (
+            request.resource.data.type in ['exit', 'sale']
+            && request.resource.data.beforeStock
+              >= request.resource.data.quantity
+            && request.resource.data.afterStock
+              == request.resource.data.beforeStock
+                - request.resource.data.quantity
+          )
+          || (
+            request.resource.data.type == 'adjustment'
+            && request.resource.data.quantity
+              == (
+                request.resource.data.afterStock
+                >= request.resource.data.beforeStock
+                  ? request.resource.data.afterStock
+                    - request.resource.data.beforeStock
+                  : request.resource.data.beforeStock
+                    - request.resource.data.afterStock
+              )
+          )
+        )
+        && request.resource.data.reason is string
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.occurredAt == request.time
+        && productAfter.stock == request.resource.data.afterStock
+        && productAfter.lastMovementId == movementId
+        && (
+          (
+            existingProduct
+            && get(productPath(productId)).data.stock
+              == request.resource.data.beforeStock
+          )
+          || (
+            !existingProduct
+            && managementRole()
+            && request.resource.data.type == 'entry'
+            && request.resource.data.beforeStock == 0
+          )
+        )
+        && (
+          managementRole()
+          || (
+            hasRole('Pasillo')
+            && request.resource.data.type in ['entry', 'exit', 'adjustment']
+          )
+          || (
+            hasRole('Caja')
+            && request.resource.data.type == 'sale'
+          )
+        )
+        && (
+          request.resource.data.type != 'sale'
+          || (
+            request.resource.data.saleId is string
+            && existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.saleId))
+            && getAfter(/databases/$(database)/documents/sales/$(request.resource.data.saleId)).data.createdBy
+              == request.auth.uid
+            && getAfter(/databases/$(database)/documents/sales/$(request.resource.data.saleId)).data.items.hasAny([
+              {
+                'productId': productId,
+                'sku': productAfter.sku,
+                'name': productAfter.name,
+                'quantity': request.resource.data.quantity,
+                'unitPrice': productAfter.price,
+                'subtotal': productAfter.price
+                  * request.resource.data.quantity
+              }
+            ])
+          )
+        )
+        && (
+          request.resource.data.type != 'purchase'
+          || (
+            request.resource.data.purchaseId is string
+            && existsAfter(/databases/$(database)/documents/purchases/$(request.resource.data.purchaseId))
+            && getAfter(/databases/$(database)/documents/purchases/$(request.resource.data.purchaseId)).data.createdBy
+              == request.auth.uid
+            && getAfter(/databases/$(database)/documents/purchases/$(request.resource.data.purchaseId)).data.productId
+              == productId
+            && getAfter(/databases/$(database)/documents/purchases/$(request.resource.data.purchaseId)).data.quantity
+              == request.resource.data.quantity
+            && getAfter(/databases/$(database)/documents/purchases/$(request.resource.data.purchaseId)).data.productName
+              == productAfter.name
+            && getAfter(/databases/$(database)/documents/purchases/$(request.resource.data.purchaseId)).data.sku
+              == productAfter.sku
+          )
+        );
+    }
+
+    function isOperatorRole(role) {
+      return role in ['Caja', 'Pasillo'];
+    }
+
+    match /users/{userId} {
+      allow get: if signedIn()
+        && (
+          request.auth.uid == userId
+          || hasRole('Administrador')
+          || hasRole('Gerente')
+        );
+      allow list: if hasRole('Administrador') || hasRole('Gerente');
+
+      allow create: if hasRole('Administrador')
+        && isOperatorRole(request.resource.data.role)
+        && request.resource.data.active == true
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.displayName is string
+        && request.resource.data.email is string
+        && request.resource.data.keys().hasOnly([
+          'displayName',
+          'email',
+          'role',
+          'active',
+          'createdBy',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update: if hasRole('Administrador')
+        && isOperatorRole(resource.data.role)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['active', 'updatedAt'])
+        && request.resource.data.active is bool
+        && request.resource.data.active != resource.data.active
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    match /users/{userId}/fcmDevices/{deviceId} {
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && managementRole()
+        && request.resource.data.keys().hasOnly(['fid', 'updatedAt'])
+        && request.resource.data.fid is string
+        && request.resource.data.fid.size() > 0
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if request.auth != null
+        && request.auth.uid == userId
+        && managementRole();
+      allow get, list: if false;
+    }
+
+    match /users/{userId}/notifications/{notificationId} {
+      allow get, list: if request.auth != null
+        && request.auth.uid == userId
+        && activeUser();
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && activeUser()
+        && resource.data.read == false
+        && request.resource.data.read == true
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['read']);
+      allow create, delete: if false;
+    }
+
+    match /auditLogs/{eventId} {
+      allow get, list: if hasRole('Administrador') || hasRole('Gerente');
+
+      allow create: if hasRole('Administrador')
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.actorEmail == request.auth.token.email
+        && request.resource.data.occurredAt == request.time
+        && request.resource.data.action in [
+          'user_created',
+          'user_activated',
+          'user_deactivated'
+        ]
+        && isOperatorRole(request.resource.data.targetRole)
+        && request.resource.data.targetUid is string
+        && request.resource.data.keys().hasOnly([
+          'actorUid',
+          'actorEmail',
+          'action',
+          'targetUid',
+          'targetRole',
+          'occurredAt'
+        ]);
+
+      allow update, delete: if false;
+    }
+
+    match /products/{productId} {
+      allow get, list: if activeUser();
+
+      allow create: if managementRole()
+        && request.resource.data.keys().hasOnly([
+          'sku',
+          'name',
+          'description',
+          'category',
+          'price',
+          'minStock',
+          'active',
+          'stock',
+          'createdAt',
+          'createdBy',
+          'updatedAt',
+          'updatedBy',
+          'lastMovementId'
+        ])
+        && request.resource.data.sku is string
+        && request.resource.data.sku.size() > 0
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && (
+          !request.resource.data.keys().hasAny(['description'])
+          || request.resource.data.description is string
+        )
+        && request.resource.data.category is string
+        && request.resource.data.category.size() > 0
+        && request.resource.data.price is number
+        && request.resource.data.price >= 0
+        && request.resource.data.minStock is int
+        && request.resource.data.minStock >= 0
+        && request.resource.data.stock is int
+        && request.resource.data.stock >= 0
+        && request.resource.data.active == true
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && (
+          request.resource.data.stock == 0
+          || validInitialMovement(
+            productId,
+            request.resource.data.lastMovementId
+          )
+        );
+
+      allow update: if (
+        managementRole()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'sku',
+            'name',
+            'description',
+            'category',
+            'price',
+            'minStock',
+            'active',
+            'updatedAt',
+            'updatedBy'
+          ])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['description'])
+          || request.resource.data.description is string
+        )
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid
+      ) || (
+        activeUser()
+        && (
+          (
+            managementRole()
+            && validStockUpdate(
+              productId,
+              ['entry', 'exit', 'adjustment', 'purchase', 'sale']
+            )
+          )
+          || (
+            hasRole('Pasillo')
+            && validStockUpdate(productId, ['entry', 'exit', 'adjustment'])
+          )
+          || (
+            hasRole('Caja')
+            && validStockUpdate(productId, ['sale'])
+          )
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    match /productCosts/{productId} {
+      allow get, list: if managementRole();
+
+      allow create: if managementRole()
+        && !exists(/databases/$(database)/documents/productCosts/$(productId))
+        && existsAfter(productPath(productId))
+        && request.resource.data.keys().hasOnly([
+          'productId',
+          'cost',
+          'createdAt',
+          'createdBy',
+          'updatedAt',
+          'updatedBy'
+        ])
+        && request.resource.data.productId == productId
+        && request.resource.data.cost is number
+        && request.resource.data.cost >= 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+
+      allow update: if managementRole()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['cost', 'updatedAt', 'updatedBy'])
+        && request.resource.data.productId == resource.data.productId
+        && request.resource.data.cost is number
+        && request.resource.data.cost >= 0
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+
+      allow delete: if false;
+    }
+
+    match /stockMovements/{movementId} {
+      allow get, list: if activeUser();
+      allow create: if activeUser()
+        && request.resource.data.productId is string
+        && validMovementCreate(request.resource.data.productId, movementId);
+      allow update, delete: if false;
+    }
+
+    match /cashShifts/{cashierUid} {
+      allow get, list: if managementRole()
+        || (hasRole('Caja') && cashierUid == request.auth.uid);
+      allow create: if hasRole('Caja')
+        && cashierUid == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'shiftId',
+          'cashierUid',
+          'cashierName',
+          'status',
+          'openingCash',
+          'openedAt',
+          'openedBy',
+          'closedAt',
+          'closedBy',
+          'countedCash'
+        ])
+        && request.resource.data.shiftId is string
+        && request.resource.data.cashierUid == request.auth.uid
+        && request.resource.data.cashierName is string
+        && request.resource.data.status == 'open'
+        && request.resource.data.openingCash is number
+        && request.resource.data.openingCash >= 0
+        && request.resource.data.openedAt == request.time
+        && request.resource.data.openedBy == request.auth.uid
+        && request.resource.data.closedAt == null
+        && request.resource.data.closedBy == null
+        && request.resource.data.countedCash == null;
+      allow update: if hasRole('Caja')
+        && cashierUid == request.auth.uid
+        && (
+          (
+            resource.data.status == 'closed'
+            && request.resource.data.status == 'open'
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly([
+                'shiftId',
+                'cashierUid',
+                'cashierName',
+                'status',
+                'openingCash',
+                'openedAt',
+                'openedBy',
+                'closedAt',
+                'closedBy',
+                'countedCash'
+              ])
+            && request.resource.data.shiftId is string
+            && request.resource.data.shiftId != resource.data.shiftId
+            && request.resource.data.cashierUid == request.auth.uid
+            && request.resource.data.cashierName is string
+            && request.resource.data.openingCash is number
+            && request.resource.data.openingCash >= 0
+            && request.resource.data.openedAt == request.time
+            && request.resource.data.openedBy == request.auth.uid
+            && request.resource.data.closedAt == null
+            && request.resource.data.closedBy == null
+            && request.resource.data.countedCash == null
+          )
+          || (
+            resource.data.status == 'open'
+            && request.resource.data.status == 'closed'
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'closedAt', 'closedBy', 'countedCash'])
+            && request.resource.data.shiftId == resource.data.shiftId
+            && request.resource.data.cashierUid == request.auth.uid
+            && request.resource.data.cashierName == resource.data.cashierName
+            && request.resource.data.openingCash == resource.data.openingCash
+            && request.resource.data.openedAt == resource.data.openedAt
+            && request.resource.data.openedBy == resource.data.openedBy
+            && request.resource.data.closedAt == request.time
+            && request.resource.data.closedBy == request.auth.uid
+            && request.resource.data.countedCash is number
+            && request.resource.data.countedCash >= 0
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /cashShiftHistory/{shiftId} {
+      allow get, list: if managementRole()
+        || (
+          hasRole('Caja')
+          && resource.data.cashierUid == request.auth.uid
+        );
+      allow create: if hasRole('Caja')
+        && request.resource.data.keys().hasOnly([
+          'shiftId',
+          'cashierUid',
+          'cashierName',
+          'status',
+          'openingCash',
+          'openedAt',
+          'openedBy',
+          'closedAt',
+          'closedBy',
+          'countedCash'
+        ])
+        && request.resource.data.shiftId == shiftId
+        && request.resource.data.cashierUid == request.auth.uid
+        && request.resource.data.cashierName is string
+        && request.resource.data.status == 'closed'
+        && request.resource.data.openingCash is number
+        && request.resource.data.openedAt is timestamp
+        && request.resource.data.openedBy == request.auth.uid
+        && request.resource.data.closedAt == request.time
+        && request.resource.data.closedBy == request.auth.uid
+        && request.resource.data.countedCash is number
+        && request.resource.data.countedCash >= 0
+        && existsAfter(cashShiftPath(request.auth.uid))
+        && getAfter(cashShiftPath(request.auth.uid)).data.status == 'closed'
+        && getAfter(cashShiftPath(request.auth.uid)).data.shiftId == shiftId
+        && getAfter(cashShiftPath(request.auth.uid)).data.cashierUid
+          == request.resource.data.cashierUid
+        && getAfter(cashShiftPath(request.auth.uid)).data.cashierName
+          == request.resource.data.cashierName
+        && getAfter(cashShiftPath(request.auth.uid)).data.openingCash
+          == request.resource.data.openingCash
+        && getAfter(cashShiftPath(request.auth.uid)).data.openedAt
+          == request.resource.data.openedAt
+        && getAfter(cashShiftPath(request.auth.uid)).data.openedBy
+          == request.resource.data.openedBy
+        && getAfter(cashShiftPath(request.auth.uid)).data.closedAt
+          == request.resource.data.closedAt
+        && getAfter(cashShiftPath(request.auth.uid)).data.closedBy
+          == request.resource.data.closedBy
+        && getAfter(cashShiftPath(request.auth.uid)).data.countedCash
+          == request.resource.data.countedCash;
+      allow update, delete: if false;
+    }
+
+    match /sales/{saleId} {
+      allow get, list: if managementRole()
+        || (activeUser() && resource.data.createdBy == request.auth.uid);
+      allow create: if activeUser()
+        && (
+          hasRole('Caja')
+          || hasRole('Administrador')
+          || hasRole('Gerente')
+        )
+        && request.resource.data.keys().hasOnly([
+          'items',
+          'total',
+          'paymentMethod',
+          'status',
+          'createdBy',
+          'createdByName',
+          'occurredAt',
+          'shiftId',
+          'amountReceived',
+          'changeDue'
+        ])
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.paymentMethod
+          in ['Efectivo', 'Tarjeta', 'Transferencia']
+        && request.resource.data.status == 'completed'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.occurredAt == request.time
+        && (
+          managementRole()
+          || (
+            hasRole('Caja')
+            && request.resource.data.shiftId is string
+            && existsAfter(cashShiftPath(request.auth.uid))
+            && getAfter(cashShiftPath(request.auth.uid)).data.status == 'open'
+            && getAfter(cashShiftPath(request.auth.uid)).data.shiftId
+              == request.resource.data.shiftId
+            && getAfter(cashShiftPath(request.auth.uid)).data.cashierUid
+              == request.auth.uid
+            && request.resource.data.amountReceived is number
+            && request.resource.data.changeDue is number
+            && request.resource.data.changeDue >= 0
+            && (
+              (
+                request.resource.data.paymentMethod == 'Efectivo'
+                && request.resource.data.amountReceived
+                  >= request.resource.data.total
+                && request.resource.data.changeDue
+                  == request.resource.data.amountReceived
+                    - request.resource.data.total
+              )
+              || (
+                request.resource.data.paymentMethod
+                  in ['Tarjeta', 'Transferencia']
+                && request.resource.data.amountReceived
+                  == request.resource.data.total
+                && request.resource.data.changeDue == 0
+              )
+            )
+          )
+        );
+      allow update, delete: if false;
+    }
+
+    match /purchases/{purchaseId} {
+      allow get, list: if managementRole() || hasRole('Pasillo');
+      allow create: if managementRole()
+        && request.resource.data.keys().hasOnly([
+          'productId',
+          'productName',
+          'sku',
+          'quantity',
+          'unitCost',
+          'total',
+          'supplier',
+          'reference',
+          'status',
+          'createdBy',
+          'createdByName',
+          'occurredAt'
+        ])
+        && request.resource.data.productId is string
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity > 0
+        && request.resource.data.unitCost is number
+        && request.resource.data.unitCost >= 0
+        && request.resource.data.total
+          == request.resource.data.quantity * request.resource.data.unitCost
+        && request.resource.data.status == 'received'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.occurredAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
